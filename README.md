@@ -1,2 +1,11 @@
 # MCDR_HibernateR
-一个MCDReforged插件，可以根据服务器内玩家情况自动开启或关闭服务器
+
+一个MCDReforged插件，可以在服务器没有玩家的时候自动关闭服务器。有玩家尝试访问的时候开启服务器。
+
+# 
+
+## 代码参考
+
+https://github.com/Dark-Night-Base/Hibernate
+
+https://github.com/ZockerSK/FakeMCServer
