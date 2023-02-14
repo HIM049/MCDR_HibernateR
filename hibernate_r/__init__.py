@@ -38,6 +38,7 @@ def check_player_num(server: PluginServerInterface):
     if len(lib_online_player.get_player_list()) == 0:
         
         check_config_fire(server)
+        time.sleep(2)
         with open("config/HibernateR.json", "r") as file:
             config = json.load(file)
         wait_min = config["wait_min"]
@@ -57,6 +58,7 @@ def check_player_num(server: PluginServerInterface):
 def fake_server(server: PluginServerInterface):
 
     check_config_fire(server)
+    time.sleep(2)
     with open("config/HibernateR.json", "r") as file:
             config = json.load(file)
     fs_ip = config["ip"]
@@ -93,7 +95,7 @@ def fake_server(server: PluginServerInterface):
     server.logger.info("开始监听端口")
     try:
         while True:
-            server.logger.info("等待连接")
+            # server.logger.info("等待连接")
             client_socket, client_address = server_socket.accept()
             try:
                 recv_data = client_socket.recv(1024)
@@ -181,15 +183,12 @@ def crative_config_fire():
     config["port"] = 25565
     config["protocol"] = 2
     config["motd"] = {}
-    config["motd"]["1"] = "§4Maintenance!"
-    config["motd"]["2"] = "§aCheck example.com for more information!"
-    config["version_text"] = "§4Maintenance"
-    config["kick_message"] = ["§bSorry", "", "§aThis server is offline!"]
+    config["motd"]["1"] = "§e服务器正在休眠！"
+    config["motd"]["2"] = "§c进入服务器可将服务器从休眠中唤醒"
+    config["version_text"] = "§4Sleeping"
+    config["kick_message"] = ["§e§l请求成功！", "", "§f服务器正在启动！请稍作等待后进入"]
     config["server_icon"] = "server_icon.png"
-    config["samples"] = ["§bexample.com", "", "§4Maintenance"]
-    config["show_ip_if_hostname_available"] = True
-    config["player_max"] = 0
-    config["player_online"] = 0
+    config["samples"] = ["服务器正在休眠", "进入服务器以唤醒"]
 
     with open("config/HibernateR.json","w") as file:
         json.dump(config, file, sort_keys=True, indent=4, ensure_ascii=False)
