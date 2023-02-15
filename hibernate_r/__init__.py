@@ -81,7 +81,6 @@ def fake_server(server: PluginServerInterface):
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
             server_socket.bind((fs_ip, fs_port))
-            server_socket.settimeout(5000)
         except:
             server.logger.error("伪装服务端启动失败")
             server_socket.close()
@@ -157,7 +156,8 @@ def fake_server(server: PluginServerInterface):
                 server.logger.warning("[%s:%s]收到了无效数据(%s)" % (client_ip, client_address[1], recv_data))
             except Exception as e:
                 server.logger.error(e)
-    except:
+    except Exception as ee:
+        server.logger.error("发生错误%s" % ee)
         server.logger.info("关闭套接字")
         server_socket.close()
 
