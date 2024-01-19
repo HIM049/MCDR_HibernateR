@@ -1,6 +1,6 @@
 {
     "id": "hibernate_r",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "HibernateR",
     "description": "一个MCDReforged插件，可以根据服务器内玩家情况自动开启或关闭服务器",
     "author": [

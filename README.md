@@ -6,6 +6,8 @@
 A MCDReforged plugin. When there are no player in the server, the plugin can make it shutdown. And if someone want to visit the server, the plugin can make the server start again.  
 If you like this plugin, plesae give me a star!
 
+在 `1.1.0` 版本后，你可以使用 `!!hr sleep` 和 `!!hr wakeup` 命令来手动控制服务端。
+
 ![Sleep](https://github.com/HIM049/MCDR_HibernateR/assets/67405384/3a20a813-9bca-4e40-942c-1dbeaac225b9)
 
 ## 代码参考

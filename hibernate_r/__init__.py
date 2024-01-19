@@ -13,8 +13,39 @@ from .byte_utils import *
 import online_player_api as lib_online_player
 
 
-# def on_load(server: PluginServerInterface, old_module):
-#     server.logger.info("插件已加载")
+
+def on_load(server: PluginServerInterface, prev_module):
+    global Server
+    global running
+
+    Server = server
+    running = False
+
+    builder = SimpleCommandBuilder()
+
+    # declare your commands
+    builder.command('!!hr sleep', hr_sleep)
+    builder.command('!!hr wakeup', hr_wakeup)
+
+    # done, now register the commands to the server
+    builder.register(server)
+
+@new_thread
+def hr_sleep():
+    Server.logger.info("手动休眠")
+    Server.stop()
+    time.sleep(10)
+
+    running = True
+    fake_server(Server)
+
+@new_thread
+def hr_wakeup():
+    Server.logger.info("手动唤醒")
+    running = True
+    time.sleep(10)
+
+    Server.start()
 
 
 # 服务器启动事件
@@ -43,10 +74,12 @@ def check_player_num(server: PluginServerInterface):
         wait_min = config["wait_min"]
 
         time.sleep(wait_min *60)
-        if len(lib_online_player.get_player_list()) == 0:
+        if len(lib_online_player.get_player_list()) == 0 and not running :
             server.logger.info("倒计时结束，关闭服务器")
             server.stop()
             time.sleep(10)
+            
+            running = True
             fake_server(server)
         else:
             server.logger.info("服务器内仍有玩家")
@@ -92,7 +125,7 @@ def fake_server(server: PluginServerInterface):
     server_socket.listen(5)
     server.logger.info("开始监听端口")
     try:
-        while True:
+        while running:
             # server.logger.info("等待连接")
             client_socket, client_address = server_socket.accept()
             try:
