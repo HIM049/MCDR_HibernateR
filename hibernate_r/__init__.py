@@ -25,7 +25,7 @@ def on_load(server: PluginServerInterface, prev_module):
     global Server
     global running
     global current_timer
-    Server = None
+    Server = server
     running = False
     current_timer = None
 
