@@ -7,20 +7,29 @@ import json
 import uuid
 import os.path
 import base64
+import threading
+
 
 from mcdreforged.api.all import *
 from .byte_utils import *
 import online_player_api as lib_online_player
 
 
+Server = None
+#running限定为代表FakeServer状态
+running = False
+current_timer = None  # 用于存储当前的倒计时线程
 
 def on_load(server: PluginServerInterface, prev_module):
+
     global Server
     global running
-
+    global current_timer
     Server = server
     running = False
+    current_timer = None
 
+    server.logger.info("所有参数初始化完成")
     builder = SimpleCommandBuilder()
 
     # declare your commands
@@ -29,9 +38,11 @@ def on_load(server: PluginServerInterface, prev_module):
 
     # done, now register the commands to the server
     builder.register(server)
+    check_config_fire(server)
 
 @new_thread
 def hr_sleep():
+    global running
     Server.logger.info("手动休眠")
     Server.stop()
     time.sleep(10)
@@ -41,6 +52,7 @@ def hr_sleep():
 
 @new_thread
 def hr_wakeup():
+    global running
     Server.logger.info("手动唤醒")
     running = True
     time.sleep(10)
@@ -48,47 +60,89 @@ def hr_wakeup():
     Server.start()
 
 
-# 服务器启动事件
+# 服务器启动完成事件
 @new_thread
 def on_server_startup(server: PluginServerInterface):
+    global running
+    global current_timer
     server.logger.info("事件：服务器启动")
+    running = False
     time.sleep(5)
-    check_player_num(server)
+    current_timer = "counting"
+    check_config_fire(server)
+    with open("config/HibernateR.json", "r") as file:
+        config = json.load(file)
+    wait_min = config["wait_min"]
+    count_down_thread(server,wait_min)
 
 # 玩家加入事件
 @new_thread
-def on_player_left(server: PluginServerInterface, player):
-    server.logger.info("事件：玩家退出")
+def on_player_joined(server: PluginServerInterface, player, info):
+    global current_timer
+    server.logger.info("事件：玩家加入")
     time.sleep(5)
-    check_player_num(server)
+    if current_timer is not None:
+        current_timer.cancel()
+        server.logger.info("休眠倒计时取消")
+    current_timer = None
+
+
+# 玩家退出事件
+@new_thread
+def on_player_left(server: PluginServerInterface, player):
+    global current_timer
+    server.logger.info("事件：玩家退出")
+    check_config_fire(server)
+    time.sleep(2)
+    with open("config/HibernateR.json", "r") as file:
+        config = json.load(file)
+    wait_min = config["wait_min"]
+    blacklist_player = config["blacklist_player"]  # 从配置文件中读取blacklist_player字段
+
+    # 获取在线玩家列表
+    player_list = lib_online_player.get_player_list()
+
+    # 移除黑名单上的玩家
+    for player in blacklist_player:
+        if player in player_list:
+            player_list.remove(player)
+
+    # 获取剩余在线玩家数量
+    player_num = len(player_list)
+
+    # 记录获取到的玩家数量和blacklist_player的值
+    server.logger.info(f"当前在线玩家数量：{player_num}，黑名单玩家：{blacklist_player}")
+
+    # 检查在线玩家数量是否小于等于blacklist_player
+    if player_num == 0:
+        current_timer = "counting"
+        count_down_thread(server,wait_min)
+
 
 # 倒数并关闭服务器
 @spam_proof
-def check_player_num(server: PluginServerInterface):
-    if len(lib_online_player.get_player_list()) == 0:
-        
-        check_config_fire(server)
-        time.sleep(2)
-        with open("config/HibernateR.json", "r") as file:
-            config = json.load(file)
-        wait_min = config["wait_min"]
+def count_down_thread(server: PluginServerInterface,wait_min):
+    global current_timer
+    server.logger.info("休眠倒计时开始")
+    current_timer = threading.Timer(wait_min * 60, shutdown_server, args=(server,))
+    current_timer.start()
 
-        time.sleep(wait_min *60)
-        if len(lib_online_player.get_player_list()) == 0 and not running :
-            server.logger.info("倒计时结束，关闭服务器")
-            server.stop()
-            time.sleep(10)
-            
-            running = True
-            fake_server(server)
-        else:
-            server.logger.info("服务器内仍有玩家")
-    else: return
+
+# 关闭服务器
+def shutdown_server(server: PluginServerInterface):
+    global running
+    server.logger.info("倒计时结束，关闭服务器")
+    server.stop()
+    time.sleep(10)#这个逻辑有点问题，如果用了forge那种大服务器关闭要很久（我遇到过），但是没有思路和精力改
+
+    running = True
+    fake_server(server)
+
 
 # FakeServer部分
 @spam_proof
 def fake_server(server: PluginServerInterface):
-
+    global running
     check_config_fire(server)
     time.sleep(2)
     with open("config/HibernateR.json", "r") as file:
@@ -173,6 +227,8 @@ def fake_server(server: PluginServerInterface):
                         # 直接全部删掉，不是ping直接返回、
                         write_response(client_socket, json.dumps({"text": fs_kick_message}))
                         start_server(server)
+                        running = False
+
                         return
                     elif packetID == 1:
                         (long, i) = read_long(recv_data, i)
@@ -202,6 +258,13 @@ def start_server(server: PluginServerInterface):
 @new_thread
 def check_config_fire(server: PluginServerInterface):
     if os.path.exists("config/HibernateR.json"):
+        # 检查是否存在Blacklist_Player字段
+        with open("config/HibernateR.json", "r") as file:
+            config = json.load(file)
+        if "blacklist_player" not in config:
+            config["blacklist_player"] = []
+            with open("config/HibernateR.json", "w") as file:
+                json.dump(config, file)
         pass
     else:
         server.logger.warning("未找到配置文件！正在以默认值创建")
@@ -211,6 +274,7 @@ def check_config_fire(server: PluginServerInterface):
 def crative_config_fire():
     config = {}
     config["wait_min"] = 10
+    config["blacklist_player"] = []
     config["ip"] = "0.0.0.0"
     config["port"] = 25565
     config["protocol"] = 2
