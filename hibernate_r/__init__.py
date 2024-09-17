@@ -15,71 +15,74 @@ from .byte_utils import *
 import online_player_api as lib_online_player
 
 
-Server = None
-#running限定为代表FakeServer状态
-running = False
+is_fake_running = False # 伪装服务器状态
 current_timer = None  # 用于存储当前的倒计时线程
+Server = None
 
+# 初始化插件
 def on_load(server: PluginServerInterface, prev_module):
 
+    # 初始化 server
     global Server
-    global running
-    global current_timer
     Server = server
-    running = False
-    current_timer = None
+    Server.logger.info("参数初始化完成")
 
-    server.logger.info("参数初始化完成")
+    # 构建命令树
     builder = SimpleCommandBuilder()
-
-    # declare your commands
     builder.command('!!hr sleep', hr_sleep)
     builder.command('!!hr wakeup', hr_wakeup)
-
-    # done, now register the commands to the server
     builder.register(server)
+
+    # 检查配置文件
     check_config_fire(server)
 
 @new_thread
 def hr_sleep():
-    global running
-    Server.logger.info("手动休眠")
+    global is_fake_running
+    global current_timer
+    Server.logger.info("事件：手动休眠")
+    if current_timer is not None:
+        current_timer.cancel()
+        current_timer = None
+        Server.logger.info("休眠倒计时取消")
     Server.stop()
     time.sleep(10)
 
-    fake_server(Server)
+    fake_server()
 
 @new_thread
 def hr_wakeup():
-    global running
-    Server.logger.info("手动唤醒")
-    running = False
+    global is_fake_running
+    Server.logger.info("事件：手动唤醒")
+    if is_fake_running:
+        is_fake_running = False
+    else:
+        Server.logger.info("伪装服务器未启动，无法手动唤醒")
 
 
 # 服务器启动完成事件
 @new_thread
 def on_server_startup(server: PluginServerInterface):
-    global running
+    global is_fake_running
     global current_timer
-    server.logger.info("事件：服务器启动")
-    running = False
+    Server.logger.info("事件：服务器启动")
+    is_fake_running = False
     time.sleep(5)
-    current_timer = "counting"
-    check_config_fire(server)
+    check_config_fire()
     with open("config/HibernateR.json", "r") as file:
         config = json.load(file)
     wait_min = config["wait_min"]
-    count_down_thread(server,wait_min)
+    count_down_thread(wait_min)
 
 # 玩家加入事件
 @new_thread
 def on_player_joined(server: PluginServerInterface, player, info):
     global current_timer
-    server.logger.info("事件：玩家加入")
+    Server.logger.info("事件：玩家加入")
     time.sleep(5)
     if current_timer is not None:
         current_timer.cancel()
-        server.logger.info("休眠倒计时取消")
+        Server.logger.info("休眠倒计时取消")
     current_timer = None
 
 
@@ -87,8 +90,8 @@ def on_player_joined(server: PluginServerInterface, player, info):
 @new_thread
 def on_player_left(server: PluginServerInterface, player):
     global current_timer
-    server.logger.info("事件：玩家退出")
-    check_config_fire(server)
+    Server.logger.info("事件：玩家退出")
+    check_config_fire()
     time.sleep(2)
     with open("config/HibernateR.json", "r") as file:
         config = json.load(file)
@@ -107,46 +110,44 @@ def on_player_left(server: PluginServerInterface, player):
     player_num = len(player_list)
 
     # 记录获取到的玩家数量和blacklist_player的值
-    server.logger.info(f"当前在线玩家数量：{player_num}，黑名单玩家：{blacklist_player}")
+    Server.logger.info(f"当前在线玩家数量：{player_num}，黑名单玩家：{blacklist_player}")
 
     # 检查在线玩家数量是否小于等于blacklist_player
     if player_num == 0:
-        current_timer = "counting"
-        count_down_thread(server,wait_min)
+        count_down_thread(wait_min)
 
 
 # 倒数并关闭服务器
 @spam_proof
-def count_down_thread(server: PluginServerInterface,wait_min):
+def count_down_thread(wait_min):
     global current_timer
-    server.logger.info("休眠倒计时开始")
-    current_timer = threading.Timer(wait_min * 60, shutdown_server, args=(server,))
+    current_timer = threading.Timer(wait_min * 60, shutdown_server)
     current_timer.start()
+    Server.logger.info("休眠倒计时开始")
 
 
 # 关闭服务器
-def shutdown_server(server: PluginServerInterface):
-    global running
-    server.logger.info("倒计时结束，关闭服务器")
-    server.stop()
-    time.sleep(10)
-    # TODO: 这个逻辑有点问题，如果用了forge那种大服务器关闭要很久（我遇到过），但是没有思路和精力改
+def shutdown_server():
+    global is_fake_running
+    Server.logger.info("倒计时结束，关闭服务器")
+    Server.stop()
+    Server.wait_until_stop()
 
-    fake_server(server)
+    fake_server()
 
 
 # FakeServer部分
 @spam_proof
-def fake_server(server: PluginServerInterface):
-    global running
+def fake_server():
+    global is_fake_running
 
-    if running :
-        server.logger.warn("伪装服务器正在运行")
+    if is_fake_running :
+        Server.logger.warn("伪装服务器正在运行")
         return
     else:
-        running = True
+        is_fake_running = True
     
-    check_config_fire(server)
+    check_config_fire()
     time.sleep(2)
     with open("config/HibernateR.json", "r") as file:
             config = json.load(file)
@@ -161,31 +162,27 @@ def fake_server(server: PluginServerInterface):
             fs_kick_message += message + "\n"
 
     if not os.path.exists(config["server_icon"]):
-            server.logger.warning("未找到服务器图标，设置为None")
+            Server.logger.warning("未找到服务器图标，设置为None")
     else:
         with open(config["server_icon"], 'rb') as image:
             fs_icon = "data:image/png;base64," + base64.b64encode(image.read()).decode()
 
-    while running:
+    Server.logger.info("启动伪装服务端")
+    while is_fake_running:
         try:
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
             server_socket.bind((fs_ip, fs_port))
             server_socket.settimeout(10)
         except Exception as e:
-            server.logger.error(f"伪装服务端启动失败: {e}")
+            Server.logger.error(f"伪装服务端启动失败: {e}")
             server_socket.close()
             time.sleep(1)  # 延迟后重试
             continue
-        else:
-            server.logger.info("伪装服务端已启动")
-
 
         try:        
             server_socket.listen(5)
-            server.logger.info("开始监听端口")
-            while running:
-                # server.logger.info("等待连接")
+            while is_fake_running:
                 # 接受客户端连接
                 client_socket, client_address = server_socket.accept()
                 try:
@@ -206,7 +203,7 @@ def fake_server(server: PluginServerInterface):
                         (port, i) = read_ushort(recv_data, i)
                         (state, i) = read_varint(recv_data, i)
                         if state == 1:
-                            server.logger.info("伪装服务器收到了一次ping: %s" % (recv_data))
+                            Server.logger.info("伪装服务器收到了一次ping: %s" % (recv_data))
                             motd = {}
                             motd["version"] = {}
                             motd["version"]["name"] = "Sleeping"
@@ -226,10 +223,10 @@ def fake_server(server: PluginServerInterface):
                             write_response(client_socket, json.dumps(motd))
 
                         elif state == 2:
-                            server.logger.info("伪装服务器收到了一次连接请求: %s" % (recv_data))
+                            Server.logger.info("伪装服务器收到了一次连接请求: %s" % (recv_data))
                             write_response(client_socket, json.dumps({"text": fs_kick_message}))
-                            start_server(server)
-                            running = False
+                            start_server()
+                            is_fake_running = False
 
                             return
                         elif packetID == 1:
@@ -239,32 +236,32 @@ def fake_server(server: PluginServerInterface):
                             write_varint(response, 1)
                             bytearray.append(long)
                             client_socket.sendall(bytearray)
-                            server.logger.info("Responded with pong packet.")
+                            Server.logger.info("Responded with pong packet.")
                         else:
-                            server.logger.warning("收到了意外的数据包")
+                            Server.logger.warning("收到了意外的数据包")
                 except (TypeError, IndexError): # 错误处理（类型错误或索引错误）
-                    server.logger.warning("[%s:%s]收到了无效数据(%s)" % (client_ip, client_address[1], recv_data))
+                    Server.logger.warning("[%s:%s]收到了无效数据(%s)" % (client_ip, client_address[1], recv_data))
                 except Exception as e:
-                    server.logger.error(e)
+                    Server.logger.error(e)
                 server_socket.close()
         except socket.timeout:
-            server.logger.debug("连接超时")
+            Server.logger.debug("连接超时")
             server_socket.close()
             continue
         except Exception as ee:
-            server.logger.error("发生错误%s" % ee)
-            server.logger.info("关闭套接字")
+            Server.logger.error("发生错误%s" % ee)
+            Server.logger.info("关闭套接字")
             server_socket.close()
-    server.logger.info("伪装服务器已退出")
-    start_server(server)
+    Server.logger.info("伪装服务器已退出")
+    start_server()
 
 # 启动服务器
-def start_server(server: PluginServerInterface):
-    server.logger.info("启动服务器")
-    server.start()
+def start_server():
+    Server.logger.info("启动服务器")
+    Server.start()
 
 @new_thread
-def check_config_fire(server: PluginServerInterface):
+def check_config_fire():
     if os.path.exists("config/HibernateR.json"):
         # 检查是否存在Blacklist_Player字段
         with open("config/HibernateR.json", "r") as file:
@@ -275,7 +272,7 @@ def check_config_fire(server: PluginServerInterface):
                 json.dump(config, file)
         pass
     else:
-        server.logger.warning("未找到配置文件！正在以默认值创建")
+        Server.logger.warning("未找到配置文件，使用默认值创建")
         crative_config_fire()
         return
 
@@ -297,3 +294,4 @@ def crative_config_fire():
     with open("config/HibernateR.json","w") as file:
         json.dump(config, file, sort_keys=True, indent=4, ensure_ascii=False)
     return
+    
