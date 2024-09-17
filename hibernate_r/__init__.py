@@ -36,6 +36,7 @@ def on_load(server: PluginServerInterface, prev_module):
     # 检查配置文件
     check_config_fire(server)
 
+# 手动休眠
 @new_thread
 def hr_sleep():
     global is_fake_running
@@ -50,6 +51,7 @@ def hr_sleep():
 
     fake_server()
 
+# 手动唤醒
 @new_thread
 def hr_wakeup():
     global is_fake_running
@@ -128,7 +130,6 @@ def count_down_thread(wait_min):
 
 # 关闭服务器
 def shutdown_server():
-    global is_fake_running
     Server.logger.info("倒计时结束，关闭服务器")
     Server.stop()
     Server.wait_until_stop()
@@ -260,6 +261,7 @@ def start_server():
     Server.logger.info("启动服务器")
     Server.start()
 
+# 检查设置文件
 @new_thread
 def check_config_fire():
     if os.path.exists("config/HibernateR.json"):
@@ -276,6 +278,7 @@ def check_config_fire():
         crative_config_fire()
         return
 
+# 创建设置文件
 def crative_config_fire():
     config = {}
     config["wait_min"] = 10
