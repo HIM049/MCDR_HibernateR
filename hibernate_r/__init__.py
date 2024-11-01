@@ -27,11 +27,38 @@ class TimerManager:
     def __init__(self):
         self.current_timer = None
 
-    def start_timer(self, wait_min, callback):
+    def start_timer(self):
         self.cancel_timer()
-        self.current_timer = threading.Timer(wait_min * 60, callback)
-        self.current_timer.start()
-        Server.logger.info("休眠倒计时开始")
+
+        check_config_fire()
+
+        time.sleep(2)
+        with open("config/HibernateR.json", "r") as file:
+            config = json.load(file)
+        wait_min = config["wait_min"]
+        blacklist_player = config["blacklist_player"]  # 从配置文件中读取blacklist_player字段
+
+        # 获取在线玩家列表
+        player_list = lib_online_player.get_player_list()
+
+        # 移除黑名单上的玩家
+        for player in blacklist_player:
+            if player in player_list:
+                player_list.remove(player)
+
+        # 获取剩余在线玩家数量
+        player_num = len(player_list)
+
+        # 记录获取到的玩家数量和blacklist_player的值
+        Server.logger.info(f"当前在线玩家数量：{player_num}，黑名单玩家：{blacklist_player}")
+
+        # 检查在线玩家数量是否小于等于blacklist_player
+        if player_num == 0:
+            self.current_timer = threading.Timer(wait_min * 60, shutdown_server)
+            self.current_timer.start()
+            Server.logger.info("休眠倒计时开始")
+
+
 
     def cancel_timer(self):
         if self.current_timer is not None:
@@ -135,7 +162,8 @@ class FakeServerSocket:
             Server.logger.info("伪装服务器收到了一次连接请求")
             write_response(client_socket, json.dumps({"text": self.kick_message}))
             self.stop()
-            start_server()
+            Server.logger.info("启动服务器")
+            Server.start()
 
     def handle_pong(self, client_socket, recv_data, i):
         (long, i) = read_long(recv_data, i)
@@ -155,8 +183,6 @@ timer_manager = TimerManager()
 # 创建 fake_server_socket 实例
 fake_server_socket = FakeServerSocket("", 0, [], "", None, "")
 
-
-is_fake_running = False # 伪装服务器状态
 Server = None
 
 # 初始化插件
@@ -176,43 +202,38 @@ def on_load(server: PluginServerInterface, prev_module):
     # 检查配置文件
     check_config_fire(server)
 
-    # 启动
+    # 启动计时器
+    timer_manager.start_timer()
+
+
+def on_unload(server: PluginServerInterface):
+    # 取消计时器
+    timer_manager.cancel_timer()
+    # 关闭伪装服务器
+    fake_server_socket.stop()
+    Server.logger.info("插件已卸载")
 
 # 手动休眠
 @new_thread
 def hr_sleep():
-    global is_fake_running
     Server.logger.info("事件：手动休眠")
     timer_manager.cancel_timer()
-    Server.stop()
-    time.sleep(10)
-
+    shutdown_server()
     fake_server()
 
 # 手动唤醒
 @new_thread
 def hr_wakeup():
-    global is_fake_running
+    fake_server_socket.stop()
     Server.logger.info("事件：手动唤醒")
-    if is_fake_running:
-        is_fake_running = False
-    else:
-        Server.logger.info("伪装服务器未启动，无法手动唤醒")
 
 
 # 服务器启动完成事件
 @new_thread
 def on_server_startup(server: PluginServerInterface):
-    global is_fake_running
-    global current_timer
     Server.logger.info("事件：服务器启动")
-    is_fake_running = False
     time.sleep(5)
-    check_config_fire()
-    with open("config/HibernateR.json", "r") as file:
-        config = json.load(file)
-    wait_min = config["wait_min"]
-    timer_manager.start_timer(wait_min, shutdown_server)
+    timer_manager.start_timer()
 
 # 玩家加入事件
 @new_thread
@@ -226,43 +247,17 @@ def on_player_joined(server: PluginServerInterface, player, info):
 @new_thread
 def on_player_left(server: PluginServerInterface, player):
     Server.logger.info("事件：玩家退出")
-    check_config_fire()
-    time.sleep(2)
-    with open("config/HibernateR.json", "r") as file:
-        config = json.load(file)
-    wait_min = config["wait_min"]
-    blacklist_player = config["blacklist_player"]  # 从配置文件中读取blacklist_player字段
-
-    # 获取在线玩家列表
-    player_list = lib_online_player.get_player_list()
-
-    # 移除黑名单上的玩家
-    for player in blacklist_player:
-        if player in player_list:
-            player_list.remove(player)
-
-    # 获取剩余在线玩家数量
-    player_num = len(player_list)
-
-    # 记录获取到的玩家数量和blacklist_player的值
-    Server.logger.info(f"当前在线玩家数量：{player_num}，黑名单玩家：{blacklist_player}")
-
-    # 检查在线玩家数量是否小于等于blacklist_player
-    if player_num == 0:
-        timer_manager.start_timer(wait_min, shutdown_server)
+    timer_manager.start_timer()
 
 
 
 # FakeServer部分
 @spam_proof
 def fake_server():
-    global is_fake_running
-
-    if is_fake_running :
+    global fake_server_socket
+    if fake_server_socket.server_socket :
         Server.logger.warn("伪装服务器正在运行")
         return
-    else:
-        is_fake_running = True
 
     # 读取fakeServer相关配置
     check_config_fire()
@@ -290,11 +285,6 @@ def fake_server():
     # 启动伪装服务器
     fake_server_socket.start()
 
-
-# 启动服务器
-def start_server():
-    Server.logger.info("启动服务器")
-    Server.start()
 
 # 检查设置文件
 @new_thread
