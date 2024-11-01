@@ -100,7 +100,7 @@ class FakeServerSocket:
                 retry_delay *= 2  # 梯度增加重试间隔时间
 
         if retry_count == max_retries:
-            Server.logger.error("重试次数超过限制，伪装服务器启动失败")
+            Server.logger.error("重试次数超过限制，伪装服务器启动失败，请检查配置文件或其他占用端口的进程")
             return
 
         while self.server_socket:
@@ -177,6 +177,7 @@ class FakeServerSocket:
     def stop(self):
         if self.server_socket:
             self.server_socket.close()
+            self.server_socket = None
 
 # 创建 TimerManager 实例
 timer_manager = TimerManager()
@@ -202,8 +203,13 @@ def on_load(server: PluginServerInterface, prev_module):
     # 检查配置文件
     check_config_fire(server)
 
-    # 启动计时器
-    timer_manager.start_timer()
+    # 检查服务器状态并启动计时器或伪装服务器
+    if server.is_running():
+        Server.logger.info("服务器正在运行，启动计时器")
+        timer_manager.start_timer()
+    else:
+        Server.logger.info("服务器未运行，启动伪装服务器")
+        fake_server()
 
 
 def on_unload(server: PluginServerInterface):
@@ -226,6 +232,7 @@ def hr_sleep():
 def hr_wakeup():
     fake_server_socket.stop()
     Server.logger.info("事件：手动唤醒")
+    Server.start()
 
 
 # 服务器启动完成事件
@@ -291,11 +298,11 @@ def fake_server():
 def check_config_fire():
     if os.path.exists("config/HibernateR.json"):
         # 检查是否存在Blacklist_Player字段
-        with open("config/HibernateR.json", "r") as file:
+        with open("config/HibernateR.json", "r", encoding="utf-8") as file:
             config = json.load(file)
         if "blacklist_player" not in config:
             config["blacklist_player"] = []
-            with open("config/HibernateR.json", "w") as file:
+            with open("config/HibernateR.json", "w", encoding="utf-8") as file:
                 json.dump(config, file)
         pass
     else:
