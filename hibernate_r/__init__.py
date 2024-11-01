@@ -14,9 +14,149 @@ from mcdreforged.api.all import *
 from .byte_utils import *
 import online_player_api as lib_online_player
 
+# 关闭服务器
+def shutdown_server():
+    Server.logger.info("倒计时结束，关闭服务器")
+    Server.stop()
+    Server.wait_until_stop()
+
+    fake_server()
+
+# 倒计时用计时器
+class TimerManager:
+    def __init__(self):
+        self.current_timer = None
+
+    def start_timer(self, wait_min, callback):
+        self.cancel_timer()
+        self.current_timer = threading.Timer(wait_min * 60, callback)
+        self.current_timer.start()
+        Server.logger.info("休眠倒计时开始")
+
+    def cancel_timer(self):
+        if self.current_timer is not None:
+            self.current_timer.cancel()
+            self.current_timer = None
+            Server.logger.info("休眠倒计时取消")
+
+
+# FakeServer
+class FakeServerSocket:
+    def __init__(self, ip, port, samples, motd, icon, kick_message):
+        self.ip = ip
+        self.port = port
+        self.samples = samples
+        self.motd = motd
+        self.icon = icon
+        self.kick_message = kick_message
+        self.server_socket = None
+
+    def start(self):
+        retry_count = 0
+        max_retries = 5  # 最大重试次数
+        retry_delay = 1  # 初始重试间隔时间
+
+        while retry_count < max_retries:
+            try:
+                # 创建套接字并绑定到指定IP和端口
+                self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+                self.server_socket.bind((self.ip, self.port))
+                self.server_socket.settimeout(10)
+                break
+            except Exception as e:
+                # 处理套接字创建或绑定失败
+                Server.logger.error(f"伪装服务端启动失败: {e}，重试中...")
+                self.stop()
+                retry_count += 1
+                time.sleep(retry_delay)  # 延迟后重试
+                retry_delay *= 2  # 梯度增加重试间隔时间
+
+        if retry_count == max_retries:
+            Server.logger.error("重试次数超过限制，伪装服务器启动失败")
+            return
+
+        while self.server_socket:
+            try:
+                # 监听连接
+                self.server_socket.listen(5)
+                client_socket, client_address = self.server_socket.accept()
+                self.handle_client(client_socket, client_address)
+            except socket.timeout:
+                # 处理连接超时
+                Server.logger.debug("连接超时")
+                self.stop()
+                continue
+            except Exception as ee:
+                # 处理其他异常
+                Server.logger.error(f"发生错误: {ee}")
+                self.stop()
+        Server.logger.info("伪装服务器已退出")
+
+    def handle_client(self, client_socket, client_address):
+        # 处理客户端连接
+        try:
+            recv_data = client_socket.recv(1024)
+            client_ip = client_address[0]
+            (length, i) = read_varint(recv_data, 0)
+            (packetID, i) = read_varint(recv_data, i)
+
+            if packetID == 0:
+                self.handle_ping(client_socket, recv_data, i)
+            elif packetID == 1:
+                self.handle_pong(client_socket, recv_data, i)
+            else:
+                Server.logger.warning("收到了意外的数据包")
+        except (TypeError, IndexError):
+            Server.logger.warning(f"[{client_ip}:{client_address[1]}]收到了无效数据({recv_data})")
+        except Exception as e:
+            Server.logger.error(e)
+        finally:
+            client_socket.close()
+
+    def handle_ping(self, client_socket, recv_data, i):
+        #处理ping request
+        (version, i) = read_varint(recv_data, i)
+        (ip, i) = read_utf(recv_data, i)
+        ip = ip.replace('\x00', '').replace("\r", "\\r").replace("\t", "\\t").replace("\n", "\\n")
+        (port, i) = read_ushort(recv_data, i)
+        (state, i) = read_varint(recv_data, i)
+        if state == 1:
+            Server.logger.info("伪装服务器收到了一次ping")
+            motd = {
+                "version": {"name": "Sleeping", "protocol": 2},
+                "players": {"max": 10, "online": 10, "sample": [{"name": sample, "id": str(uuid.uuid4())} for sample in self.samples]},
+                "description": {"text": self.motd}
+            }
+            if self.icon:
+                motd["favicon"] = self.icon
+            write_response(client_socket, json.dumps(motd))
+        elif state == 2:
+            Server.logger.info("伪装服务器收到了一次连接请求")
+            write_response(client_socket, json.dumps({"text": self.kick_message}))
+            self.stop()
+            start_server()
+
+    def handle_pong(self, client_socket, recv_data, i):
+        (long, i) = read_long(recv_data, i)
+        response = bytearray()
+        write_varint(response, 9)
+        write_varint(response, 1)
+        response.append(long)
+        client_socket.sendall(response)
+        Server.logger.info("Responded with pong packet.")
+
+    def stop(self):
+        if self.server_socket:
+            self.server_socket.close()
+
+# 创建 TimerManager 实例
+timer_manager = TimerManager()
+# 创建 fake_server_socket 实例
+fake_server_socket = FakeServerSocket("", 0, [], "", None, "")
+
 
 is_fake_running = False # 伪装服务器状态
-current_timer = None  # 用于存储当前的倒计时线程
 Server = None
 
 # 初始化插件
@@ -36,16 +176,14 @@ def on_load(server: PluginServerInterface, prev_module):
     # 检查配置文件
     check_config_fire(server)
 
+    # 启动
+
 # 手动休眠
 @new_thread
 def hr_sleep():
     global is_fake_running
-    global current_timer
     Server.logger.info("事件：手动休眠")
-    if current_timer is not None:
-        current_timer.cancel()
-        current_timer = None
-        Server.logger.info("休眠倒计时取消")
+    timer_manager.cancel_timer()
     Server.stop()
     time.sleep(10)
 
@@ -74,24 +212,19 @@ def on_server_startup(server: PluginServerInterface):
     with open("config/HibernateR.json", "r") as file:
         config = json.load(file)
     wait_min = config["wait_min"]
-    count_down_thread(wait_min)
+    timer_manager.start_timer(wait_min, shutdown_server)
 
 # 玩家加入事件
 @new_thread
 def on_player_joined(server: PluginServerInterface, player, info):
-    global current_timer
     Server.logger.info("事件：玩家加入")
     time.sleep(5)
-    if current_timer is not None:
-        current_timer.cancel()
-        Server.logger.info("休眠倒计时取消")
-    current_timer = None
+    timer_manager.cancel_timer()
 
 
 # 玩家退出事件
 @new_thread
 def on_player_left(server: PluginServerInterface, player):
-    global current_timer
     Server.logger.info("事件：玩家退出")
     check_config_fire()
     time.sleep(2)
@@ -116,25 +249,8 @@ def on_player_left(server: PluginServerInterface, player):
 
     # 检查在线玩家数量是否小于等于blacklist_player
     if player_num == 0:
-        count_down_thread(wait_min)
+        timer_manager.start_timer(wait_min, shutdown_server)
 
-
-# 倒数并关闭服务器
-@spam_proof
-def count_down_thread(wait_min):
-    global current_timer
-    current_timer = threading.Timer(wait_min * 60, shutdown_server)
-    current_timer.start()
-    Server.logger.info("休眠倒计时开始")
-
-
-# 关闭服务器
-def shutdown_server():
-    Server.logger.info("倒计时结束，关闭服务器")
-    Server.stop()
-    Server.wait_until_stop()
-
-    fake_server()
 
 
 # FakeServer部分
@@ -147,7 +263,8 @@ def fake_server():
         return
     else:
         is_fake_running = True
-    
+
+    # 读取fakeServer相关配置
     check_config_fire()
     time.sleep(2)
     with open("config/HibernateR.json", "r") as file:
@@ -168,93 +285,11 @@ def fake_server():
         with open(config["server_icon"], 'rb') as image:
             fs_icon = "data:image/png;base64," + base64.b64encode(image.read()).decode()
 
-    Server.logger.info("启动伪装服务端")
-    while is_fake_running:
-        try:
-            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-            server_socket.bind((fs_ip, fs_port))
-            server_socket.settimeout(10)
-        except Exception as e:
-            Server.logger.error(f"伪装服务端启动失败: {e}")
-            server_socket.close()
-            time.sleep(1)  # 延迟后重试
-            continue
+    # 创建 FakeServerSocket 实例
+    fake_server_socket = FakeServerSocket(fs_ip, fs_port, fs_samples, fs_motd, fs_icon, fs_kick_message)
+    # 启动伪装服务器
+    fake_server_socket.start()
 
-        try:        
-            server_socket.listen(5)
-            while is_fake_running:
-                # 接受客户端连接
-                client_socket, client_address = server_socket.accept()
-                try:
-                    recv_data = client_socket.recv(1024)
-                    client_ip = client_address[0]
-                    (length, i) = read_varint(recv_data, 0)
-                    (packetID, i) = read_varint(recv_data, i)
-
-                    if packetID == 0:
-                        (version, i) = read_varint(recv_data, i)
-                        (ip, i) = read_utf(recv_data, i)
-
-                        ip = ip.replace('\x00', '').replace("\r", "\\r").replace("\t", "\\t").replace("\n", "\\n")
-                        is_using_fml = False
-                        if ip.endswith("FML"):
-                            is_using_fml = True
-                            ip = ip[:-3]
-                        (port, i) = read_ushort(recv_data, i)
-                        (state, i) = read_varint(recv_data, i)
-                        if state == 1:
-                            Server.logger.info("伪装服务器收到了一次ping: %s" % (recv_data))
-                            motd = {}
-                            motd["version"] = {}
-                            motd["version"]["name"] = "Sleeping"
-                            motd["version"]["protocol"] = 2
-                            motd["players"] = {}
-                            motd["players"]["max"] = 10
-                            motd["players"]["online"] = 10
-                            motd["players"]["sample"] = []
-
-                            for sample in fs_samples:
-                                motd["players"]["sample"].append(
-                                    {"name": sample, "id": str(uuid.uuid4())})
-
-                            motd["description"] = {"text": fs_motd}
-                            if fs_icon and len(fs_icon) > 0:
-                                motd["favicon"] = fs_icon
-                            write_response(client_socket, json.dumps(motd))
-
-                        elif state == 2:
-                            Server.logger.info("伪装服务器收到了一次连接请求: %s" % (recv_data))
-                            write_response(client_socket, json.dumps({"text": fs_kick_message}))
-                            start_server()
-                            is_fake_running = False
-
-                            return
-                        elif packetID == 1:
-                            (long, i) = read_long(recv_data, i)
-                            response = bytearray()
-                            write_varint(response, 9)
-                            write_varint(response, 1)
-                            bytearray.append(long)
-                            client_socket.sendall(bytearray)
-                            Server.logger.info("Responded with pong packet.")
-                        else:
-                            Server.logger.warning("收到了意外的数据包")
-                except (TypeError, IndexError): # 错误处理（类型错误或索引错误）
-                    Server.logger.warning("[%s:%s]收到了无效数据(%s)" % (client_ip, client_address[1], recv_data))
-                except Exception as e:
-                    Server.logger.error(e)
-                server_socket.close()
-        except socket.timeout:
-            Server.logger.debug("连接超时")
-            server_socket.close()
-            continue
-        except Exception as ee:
-            Server.logger.error("发生错误%s" % ee)
-            Server.logger.info("关闭套接字")
-            server_socket.close()
-    Server.logger.info("伪装服务器已退出")
-    start_server()
 
 # 启动服务器
 def start_server():
