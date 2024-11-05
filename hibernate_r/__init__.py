@@ -9,7 +9,6 @@ import os.path
 import base64
 import threading
 
-
 from mcdreforged.api.all import *
 from .byte_utils import *
 import online_player_api as lib_online_player
@@ -21,7 +20,7 @@ class TimerManager:
         self.current_timer = None
 
     def start_timer(self, server: PluginServerInterface):
-        self.cancel_timer()
+        self.cancel_timer(server)
 
         check_config_fire()
 
@@ -96,6 +95,7 @@ class FakeServerSocket:
             server.logger.warning("伪装服务器正在运行")
             return
 
+        server.logger.info("启动伪装服务端")
         while retry_count < max_retries:
             try:
                 # 设置套接字并绑定到指定IP和端口
@@ -121,7 +121,7 @@ class FakeServerSocket:
                 # 监听连接
                 self.server_socket.listen(5)
                 client_socket, client_address = self.server_socket.accept()
-                self.handle_client(client_socket, client_address)
+                self.handle_client(client_socket, client_address,server)
             except socket.timeout:
                 # 处理连接超时
                 server.logger.debug("连接超时")
@@ -142,9 +142,9 @@ class FakeServerSocket:
             (packetID, i) = read_varint(recv_data, i)
 
             if packetID == 0:
-                self.handle_ping(client_socket, recv_data, i)
+                self.handle_ping(client_socket, recv_data, i, server)
             elif packetID == 1:
-                self.handle_pong(client_socket, recv_data, i)
+                self.handle_pong(client_socket, recv_data, i, server)
             else:
                 server.logger.warning("收到了意外的数据包")
         except (TypeError, IndexError):
@@ -199,13 +199,13 @@ class FakeServerSocket:
 # 创建 TimerManager 实例
 timer_manager = TimerManager()
 # 创建 fake_server_socket 实例
-fake_server_socket = FakeServerSocket()
+fake_server_socket = None
 
 # Server = None
 
 # 初始化插件
 def on_load(server: PluginServerInterface, prev_module):
-    server.logger.info("参数初始化完成")
+    global fake_server_socket
 
     # 构建命令树
     builder = SimpleCommandBuilder()
@@ -216,18 +216,23 @@ def on_load(server: PluginServerInterface, prev_module):
     # 检查配置文件
     check_config_fire(server)
 
+    server.logger.info("参数初始化完成")
+
+    # 创建 fake_server_socket 实例
+    fake_server_socket = FakeServerSocket(server)
+
     # 检查服务器状态并启动计时器或伪装服务器
     if server.is_server_running():
         server.logger.info("服务器正在运行，启动计时器")
-        timer_manager.start_timer()
+        timer_manager.start_timer(server)
     else:
         server.logger.info("服务器未运行，启动伪装服务器")
-        fake_server_socket.start()
+        fake_server_socket.start(server)
 
 
 def on_unload(server: PluginServerInterface):
     # 取消计时器
-    timer_manager.cancel_timer()
+    timer_manager.cancel_timer(server)
     # 关闭伪装服务器
     fake_server_socket.stop()
     server.logger.info("插件已卸载")
@@ -237,7 +242,7 @@ def on_unload(server: PluginServerInterface):
 @new_thread
 def hr_sleep(server: PluginServerInterface):
     server.logger.info("事件：手动休眠")
-    timer_manager.cancel_timer()
+    timer_manager.cancel_timer(server)
     server.stop()
 
 # 手动唤醒
@@ -253,28 +258,28 @@ def hr_wakeup(server: PluginServerInterface):
 def on_server_startup(server: PluginServerInterface):
     server.logger.info("事件：服务器启动")
     time.sleep(5)
-    timer_manager.start_timer()
+    timer_manager.start_timer(server)
 
 # 玩家加入事件
 @new_thread
 def on_player_joined(server: PluginServerInterface, player, info):
     server.logger.info("事件：玩家加入")
     time.sleep(5)
-    timer_manager.cancel_timer()
+    timer_manager.cancel_timer(server)
 
 
 # 玩家退出事件
 @new_thread
 def on_player_left(server: PluginServerInterface, player):
     server.logger.info("事件：玩家退出")
-    timer_manager.start_timer()
+    timer_manager.start_timer(server)
 
 
 @new_thread
 def on_server_stop(server: PluginServerInterface):
     server.logger.info("事件：服务器关闭")
-    timer_manager.cancel_timer()
-    fake_server_socket.start()
+    timer_manager.cancel_timer(server)
+    fake_server_socket.start(server)
 
 
 # 检查设置文件
