@@ -49,7 +49,7 @@ def on_unload(server: PluginServerInterface):
     # 取消计时器
     timer_manager.cancel_timer(server)
     # 关闭伪装服务器
-    fake_server_socket.stop()
+    fake_server_socket.stop(server)
     server.logger.info("插件已卸载")
 
 
@@ -63,7 +63,7 @@ def hr_sleep(server: PluginServerInterface):
 # 手动唤醒
 @new_thread
 def hr_wakeup(server: PluginServerInterface):
-    fake_server_socket.stop()
+    fake_server_socket.stop(server)
     server.logger.info("事件：手动唤醒")
     server.start()
 

@@ -36,9 +36,25 @@ class FakeServerSocket:
         max_retries = 5
         retry_delay = 1
 
-        if self.server_socket:
+        if self.server_socket is None:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+
+        '''
+        if self.server_socket and self.server_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN):
             server.logger.warning("伪装服务器正在运行")
             return
+        '''
+
+        # 检查伪装服务器是否在运行
+        try:
+            # 检查套接字是否已初始化且在监听
+            if self.server_socket and self.server_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN):
+                server.logger.info("伪装服务器正在运行")
+                return
+        except Exception as e:
+            pass
+
 
         server.logger.info("启动伪装服务端")
         while retry_count < max_retries:
@@ -49,7 +65,7 @@ class FakeServerSocket:
                 break
             except Exception as e:
                 server.logger.error(f"伪装服务端启动失败: {e}，重试中...")
-                self.stop()
+                self.server_socket.close()
                 retry_count += 1
                 time.sleep(retry_delay)
                 retry_delay *= 2
@@ -65,11 +81,12 @@ class FakeServerSocket:
                 self.handle_client(client_socket, client_address, server)
             except socket.timeout:
                 server.logger.debug("连接超时")
-                self.stop()
+                self.stop(server)
                 continue
             except Exception as ee:
                 server.logger.error(f"发生错误: {ee}")
-                self.stop()
+                self.stop(server)
+                break
         server.logger.info("伪装服务器已退出")
 
     def handle_client(self, client_socket, client_address, server: PluginServerInterface):
@@ -115,7 +132,7 @@ class FakeServerSocket:
         elif state == 2:
             server.logger.info("伪装服务器收到了一次连接请求")
             write_response(client_socket, json.dumps({"text": self.fs_kick_message}))
-            self.stop()
+            self.stop(server)
             server.logger.info("启动服务器")
             server.start()
 
@@ -128,7 +145,11 @@ class FakeServerSocket:
         client_socket.sendall(response)
         server.logger.info("Responded with pong packet.")
 
-    def stop(self):
+    def stop(self, server: PluginServerInterface):
         if self.server_socket:
-            self.server_socket.close()
-            self.server_socket = None
+            try:
+                self.server_socket.close()
+            except Exception as e:
+                server.logger.error(f"关闭伪装服务器失败: {e}")
+
+            #self.server_socket = None
