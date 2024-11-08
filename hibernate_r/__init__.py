@@ -26,6 +26,7 @@ def on_load(server: PluginServerInterface, prev_module):
     builder = SimpleCommandBuilder()
     builder.command('!!hr sleep', lambda src: hr_sleep(src.get_server()))
     builder.command('!!hr wakeup', lambda src: hr_wakeup(src.get_server()))
+    builder.command('!!hr startFS', lambda src: fake_server_socket.start(src.get_server()))
     builder.register(server)
 
     # 检查配置文件
@@ -37,12 +38,13 @@ def on_load(server: PluginServerInterface, prev_module):
     fake_server_socket = FakeServerSocket(server)
 
     # 检查服务器状态并启动计时器或伪装服务器
-    if server.is_server_running():
+    if server.is_server_running() or server.is_server_startup():
         server.logger.info("服务器正在运行，启动计时器")
         timer_manager.start_timer(server)
     else:
-        server.logger.info("服务器未运行，启动伪装服务器")
-        fake_server_socket.start(server)
+
+        server.logger.warning("无法判断当前服务器状态，请使用!!hr startFS手动启动伪装服务器")
+        #fake_server_socket.start(server)
 
 
 def on_unload(server: PluginServerInterface):

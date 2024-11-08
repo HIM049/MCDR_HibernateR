@@ -31,6 +31,8 @@ class FakeServerSocket:
             with open(config["server_icon"], 'rb') as image:
                 self.fs_icon = "data:image/png;base64," + base64.b64encode(image.read()).decode()
 
+        server.logger.info("伪装服务器初始化完成")
+
     def start(self, server: PluginServerInterface):
         retry_count = 0
         max_retries = 5
@@ -59,7 +61,9 @@ class FakeServerSocket:
         server.logger.info("启动伪装服务端")
         while retry_count < max_retries:
             try:
+                server.logger.info(f"伪装服务器正在setsockopt")
                 self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+                server.logger.info(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.bind((self.fs_ip, self.fs_port))
                 self.server_socket.settimeout(10)
                 break
@@ -76,6 +80,7 @@ class FakeServerSocket:
 
         while self.server_socket:
             try:
+                server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.listen(5)
                 client_socket, client_address = self.server_socket.accept()
                 self.handle_client(client_socket, client_address, server)
