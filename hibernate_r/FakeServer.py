@@ -107,7 +107,7 @@ class FakeServerSocket:
         except Exception as e:
             server.logger.error(e)
         finally:
-            client_socket.close()
+            self.stop(server)
 
     def handle_ping(self, client_socket, recv_data, i, server: PluginServerInterface):
         (version, i) = read_varint(recv_data, i)
