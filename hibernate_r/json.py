@@ -8,11 +8,11 @@ from mcdreforged.api.all import *
 def check_config_fire(server: PluginServerInterface):
     if os.path.exists("config/HibernateR.json"):
         # 检查是否存在Blacklist_Player字段
-        with open("config/HibernateR.json", "r", encoding="utf-8") as file:
+        with open("config/HibernateR.json", "r") as file:
             config = json.load(file)
         if "blacklist_player" not in config:
             config["blacklist_player"] = []
-            with open("config/HibernateR.json", "w", encoding="utf-8") as file:
+            with open("config/HibernateR.json") as file:
                 json.dump(config, file)
         pass
     else:
@@ -37,6 +37,6 @@ def creative_config_fire():
     config["server_icon"] = "server_icon.png"
     config["samples"] = ["服务器正在休眠", "进入服务器以唤醒"]
 
-    with open("config/HibernateR.json", "w") as file:
+    with open("config/HibernateR.json", "w", encoding="utf-8") as file:
         json.dump(config, file, sort_keys=True, indent=4, ensure_ascii=False)
     return

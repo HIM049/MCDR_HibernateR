@@ -83,7 +83,10 @@ class FakeServerSocket:
                 server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.listen(5)
                 client_socket, client_address = self.server_socket.accept()
-                self.handle_client(client_socket, client_address, server)
+                result=self.handle_client(client_socket, client_address, server)
+                if result == "ping_received":
+                    server.logger.info("伪装服务器已退出")
+                    return
             except socket.timeout:
                 server.logger.debug("连接超时")
                 self.stop(server)
@@ -102,7 +105,9 @@ class FakeServerSocket:
             (packetID, i) = read_varint(recv_data, i)
 
             if packetID == 0:
-                self.handle_ping(client_socket, recv_data, i, server)
+                result = self.handle_ping(client_socket, recv_data, i, server)
+                if result == "ping_received":
+                    return "ping_received"
             elif packetID == 1:
                 self.handle_pong(client_socket, recv_data, i, server)
             else:
@@ -140,6 +145,7 @@ class FakeServerSocket:
             self.stop(server)
             server.logger.info("启动服务器")
             server.start()
+            return "connection_request"
 
     def handle_pong(self, client_socket, recv_data, i, server: PluginServerInterface):
         (long, i) = read_long(recv_data, i)
