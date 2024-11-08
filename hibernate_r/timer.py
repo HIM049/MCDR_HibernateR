@@ -1,11 +1,9 @@
 # hibernate_r/timer.py
 
 import time
-import socket
 import json
-import os.path
-import base64
 import threading
+
 from mcdreforged.api.all import *
 from .byte_utils import *
 from .json import check_config_fire

@@ -65,9 +65,13 @@ def hr_sleep(server: PluginServerInterface):
 # 手动唤醒
 @new_thread
 def hr_wakeup(server: PluginServerInterface):
-    fake_server_socket.stop(server)
+
     server.logger.info("事件：手动唤醒")
-    server.start()
+    if fake_server_socket.stop(server):
+        server.start()
+    else:
+        server.logger.info("伪装服务器关闭失败，无法手动唤醒")
+
 
 
 # 服务器启动完成事件
@@ -81,7 +85,7 @@ def on_server_startup(server: PluginServerInterface):
 @new_thread
 def on_player_joined(server: PluginServerInterface, player, info):
     server.logger.info("事件：玩家加入")
-    time.sleep(5)
+    #time.sleep(5)
     timer_manager.cancel_timer(server)
 
 
@@ -89,7 +93,10 @@ def on_player_joined(server: PluginServerInterface, player, info):
 @new_thread
 def on_player_left(server: PluginServerInterface, player):
     server.logger.info("事件：玩家退出")
-    timer_manager.start_timer(server)
+    time.sleep(2)
+    if server.is_server_running():
+        timer_manager.start_timer(server)
+
 
 
 @new_thread

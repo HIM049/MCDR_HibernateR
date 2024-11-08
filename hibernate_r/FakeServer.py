@@ -3,6 +3,8 @@ import socket
 import json
 import os.path
 import base64
+from cgitb import reset
+
 from mcdreforged.api.all import *
 from .byte_utils import *
 from .json import check_config_fire
@@ -20,7 +22,7 @@ class FakeServerSocket:
         self.fs_motd = config["motd"]["1"] + "\n" + config["motd"]["2"]
         self.fs_icon = None
         self.fs_kick_message = ""
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = None
 
         for message in config["kick_message"]:
             self.fs_kick_message += message + "\n"
@@ -34,15 +36,11 @@ class FakeServerSocket:
         server.logger.info("伪装服务器初始化完成")
 
     def start(self, server: PluginServerInterface):
-        retry_count = 0
-        max_retries = 5
-        retry_delay = 1
 
+        '''
         if self.server_socket is None:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-
-        '''
         if self.server_socket and self.server_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN):
             server.logger.warning("伪装服务器正在运行")
             return
@@ -57,48 +55,56 @@ class FakeServerSocket:
         except Exception as e:
             pass
 
-
+        result = None
         server.logger.info("启动伪装服务端")
-        while retry_count < max_retries:
-            try:
-                server.logger.info(f"伪装服务器正在setsockopt")
-                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-                server.logger.info(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
-                self.server_socket.bind((self.fs_ip, self.fs_port))
-                self.server_socket.settimeout(10)
-                break
-            except Exception as e:
-                server.logger.error(f"伪装服务端启动失败: {e}，重试中...")
+        while result is not "ping_received":
+            retry_count = 0
+            max_retries = 5
+            retry_delay = 1
+            #FS创建部分
+            while retry_count < max_retries:
+                try:
+                    self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    server.logger.info(f"伪装服务器正在setsockopt")
+                    self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+                    server.logger.info(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
+                    self.server_socket.bind((self.fs_ip, self.fs_port))
+                    self.server_socket.settimeout(10)
+                    break
+                except Exception as e:
+                    server.logger.error(f"伪装服务端启动失败: {e}，重试中...")
+                    self.server_socket.close()
+                    retry_count += 1
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+
+            if retry_count == max_retries:
                 self.server_socket.close()
-                retry_count += 1
-                time.sleep(retry_delay)
-                retry_delay *= 2
+                server.logger.error("重试次数超过限制，伪装服务器启动失败，请检查配置文件或其他占用端口的进程")
+                break
 
-        if retry_count == max_retries:
-            server.logger.error("重试次数超过限制，伪装服务器启动失败，请检查配置文件或其他占用端口的进程")
-            return
-
-        while self.server_socket:
             try:
                 server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.listen(5)
-                client_socket, client_address = self.server_socket.accept()
-                result=self.handle_client(client_socket, client_address, server)
-                if result == "ping_received":
-                    server.logger.info("伪装服务器已退出")
-                    return
+                while result is not "ping_received":
+                    client_socket, client_address = self.server_socket.accept()
+                    server.logger.info(f"设立res")
+                    result=self.handle_client(client_socket, client_address, server)
             except socket.timeout:
                 server.logger.debug("连接超时")
-                self.stop(server)
-                continue
+                self.server_socket.close()
+
             except Exception as ee:
                 server.logger.error(f"发生错误: {ee}")
-                self.stop(server)
-                break
+                self.server_socket.close()
+
+        if result == "ping_received":
+            server.start()
         server.logger.info("伪装服务器已退出")
 
     def handle_client(self, client_socket, client_address, server: PluginServerInterface):
         try:
+            server.logger.info(f"收到来自{client_address[0]}:{client_address[1]}的连接")
             recv_data = client_socket.recv(1024)
             client_ip = client_address[0]
             (length, i) = read_varint(recv_data, 0)
@@ -117,7 +123,7 @@ class FakeServerSocket:
         except Exception as e:
             server.logger.error(e)
         finally:
-            self.stop(server)
+            self.server_socket.close()
 
     def handle_ping(self, client_socket, recv_data, i, server: PluginServerInterface):
         (version, i) = read_varint(recv_data, i)
@@ -130,21 +136,21 @@ class FakeServerSocket:
         (port, i) = read_ushort(recv_data, i)
         (state, i) = read_varint(recv_data, i)
         if state == 1:
-            server.logger.info("伪装服务器收到了一次ping")
+            server.logger.info("伪装服务器收到了一次ping: %s" % (recv_data))
             motd = {
                 "version": {"name": "Sleeping", "protocol": 2},
                 "players": {"max": 10, "online": 10, "sample": [{"name": sample, "id": str(uuid.uuid4())} for sample in self.fs_samples]},
                 "description": {"text": self.fs_motd}
             }
-            if self.fs_icon:
+            if self.fs_icon and len(self.fs_icon) > 0:
                 motd["favicon"] = self.fs_icon
             write_response(client_socket, json.dumps(motd))
         elif state == 2:
-            server.logger.info("伪装服务器收到了一次连接请求")
+            server.logger.info("伪装服务器收到了一次连接请求: %s" % (recv_data))
             write_response(client_socket, json.dumps({"text": self.fs_kick_message}))
             self.stop(server)
             server.logger.info("启动服务器")
-            server.start()
+            #server.start()
             return "connection_request"
 
     def handle_pong(self, client_socket, recv_data, i, server: PluginServerInterface):
@@ -153,14 +159,15 @@ class FakeServerSocket:
         write_varint(response, 9)
         write_varint(response, 1)
         response.append(long)
-        client_socket.sendall(response)
+        client_socket.sendall(bytearray)
         server.logger.info("Responded with pong packet.")
 
     def stop(self, server: PluginServerInterface):
         if self.server_socket:
             try:
                 self.server_socket.close()
+                self.server_socket = None
+                server.logger.info("已经关闭伪装服务器")
+                return True
             except Exception as e:
                 server.logger.error(f"关闭伪装服务器失败: {e}")
-
-            #self.server_socket = None
