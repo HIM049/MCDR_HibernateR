@@ -50,6 +50,11 @@ class FakeServerSocket:
             return
         '''
 
+        #检查服务器是否在运行
+        if server.is_server_running() or server.is_server_startup():
+            server.logger.info("服务器正在运行,请勿启动伪装服务器!")
+            return
+
         # 检查伪装服务器是否在运行
         try:
             # 检查套接字是否已初始化且在监听
@@ -172,7 +177,7 @@ class FakeServerSocket:
         client_socket.sendall(bytearray)
         server.logger.info("Responded with pong packet.")
 
-    @new_thread
+
     def stop(self, server: PluginServerInterface):
         self.close_request = True
         server.logger.info("正在关闭伪装服务器")
