@@ -11,6 +11,7 @@ import online_player_api as lib_online_player
 from .json import check_config_fire
 
 
+
 class FakeServerSocket:
     def __init__(self, server: PluginServerInterface):
         check_config_fire(server)
@@ -36,6 +37,7 @@ class FakeServerSocket:
 
         server.logger.info("伪装服务器初始化完成")
 
+    @new_thread
     def start(self, server: PluginServerInterface):
 
         '''
@@ -58,7 +60,7 @@ class FakeServerSocket:
 
         result = None
         server.logger.info("启动伪装服务端")
-        while result is not "ping_received":
+        while result != "connection_request":
             retry_count = 0
             max_retries = 5
             retry_delay = 1
@@ -66,9 +68,9 @@ class FakeServerSocket:
             while retry_count < max_retries:
                 try:
                     self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    server.logger.info(f"伪装服务器正在setsockopt")
+                    #server.logger.info(f"伪装服务器正在setsockopt")
                     self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-                    server.logger.info(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
+                    #server.logger.info(f"伪装服务器正在绑定 {self.fs_ip}:{self.fs_port}")
                     self.server_socket.bind((self.fs_ip, self.fs_port))
                     self.server_socket.settimeout(10)
                     break
@@ -85,46 +87,44 @@ class FakeServerSocket:
                 break
 
             try:
-                server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
+                #server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.listen(5)
-                while result is not "ping_received":
+                while result != "connection_request":
                     client_socket, client_address = self.server_socket.accept()
-                    server.logger.info(f"设立res")
-                    result=self.handle_client(client_socket, client_address, server)
+                    #server.logger.info(f"设立res")
+                    #result=self.handle_client(client_socket, client_address, server)
+                    try:
+                        server.logger.info(f"收到来自{client_address[0]}:{client_address[1]}的连接")
+                        recv_data = client_socket.recv(1024)
+                        client_ip = client_address[0]
+                        (length, i) = read_varint(recv_data, 0)
+                        (packetID, i) = read_varint(recv_data, i)
+
+                        if packetID == 0:
+                            result = self.handle_ping(client_socket, recv_data, i, server)
+                        elif packetID == 1:
+                            self.handle_pong(client_socket, recv_data, i, server)
+                        else:
+                            server.logger.warning("收到了意外的数据包")
+                    except (TypeError, IndexError):
+                        server.logger.warning(f"[{client_ip}:{client_address[1]}]收到了无效数据({recv_data})")
+                    except Exception as e:
+                        server.logger.error(e)
+
+
+                    #self.server_socket.close()
+                    server.logger.info("test2")
             except socket.timeout:
                 server.logger.debug("连接超时")
                 self.server_socket.close()
-
             except Exception as ee:
                 server.logger.error(f"发生错误: {ee}")
                 self.server_socket.close()
 
-        if result == "ping_received":
+        if result == "connection_request":
             server.start()
         server.logger.info("伪装服务器已退出")
 
-    def handle_client(self, client_socket, client_address, server: PluginServerInterface):
-        try:
-            server.logger.info(f"收到来自{client_address[0]}:{client_address[1]}的连接")
-            recv_data = client_socket.recv(1024)
-            client_ip = client_address[0]
-            (length, i) = read_varint(recv_data, 0)
-            (packetID, i) = read_varint(recv_data, i)
-
-            if packetID == 0:
-                result = self.handle_ping(client_socket, recv_data, i, server)
-                if result == "ping_received":
-                    return "ping_received"
-            elif packetID == 1:
-                self.handle_pong(client_socket, recv_data, i, server)
-            else:
-                server.logger.warning("收到了意外的数据包")
-        except (TypeError, IndexError):
-            server.logger.warning(f"[{client_ip}:{client_address[1]}]收到了无效数据({recv_data})")
-        except Exception as e:
-            server.logger.error(e)
-        finally:
-            self.server_socket.close()
 
     def handle_ping(self, client_socket, recv_data, i, server: PluginServerInterface):
         (version, i) = read_varint(recv_data, i)
@@ -146,6 +146,7 @@ class FakeServerSocket:
             if self.fs_icon and len(self.fs_icon) > 0:
                 motd["favicon"] = self.fs_icon
             write_response(client_socket, json.dumps(motd))
+            return "ping_received"
         elif state == 2:
             server.logger.info("伪装服务器收到了一次连接请求: %s" % (recv_data))
             write_response(client_socket, json.dumps({"text": self.fs_kick_message}))
