@@ -25,6 +25,7 @@ class FakeServerSocket:
         self.fs_icon = None
         self.fs_kick_message = ""
         self.server_socket = None
+        self.close_request = False
 
         for message in config["kick_message"]:
             self.fs_kick_message += message + "\n"
@@ -60,12 +61,12 @@ class FakeServerSocket:
 
         result = None
         server.logger.info("启动伪装服务端")
-        while result != "connection_request":
+        while result != "connection_request" and not self.close_request:
             retry_count = 0
             max_retries = 5
             retry_delay = 1
             #FS创建部分
-            while retry_count < max_retries:
+            while retry_count < max_retries and not self.close_request:
                 try:
                     self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     #server.logger.info(f"伪装服务器正在setsockopt")
@@ -85,11 +86,13 @@ class FakeServerSocket:
                 self.server_socket.close()
                 server.logger.error("重试次数超过限制，伪装服务器启动失败，请检查配置文件或其他占用端口的进程")
                 break
+            if self.close_request:
+                break
 
             try:
                 #server.logger.info(f"伪装服务器正在监听 {self.fs_ip}:{self.fs_port}")
                 self.server_socket.listen(5)
-                while result != "connection_request":
+                while result != "connection_request" and not self.close_request:
                     client_socket, client_address = self.server_socket.accept()
                     #server.logger.info(f"设立res")
                     #result=self.handle_client(client_socket, client_address, server)
@@ -113,7 +116,9 @@ class FakeServerSocket:
 
 
                     #self.server_socket.close()
-                    server.logger.info("test2")
+                    ###
+                    #I dont know why close here, and if I close here, accpet will raise an error
+                    ###
             except socket.timeout:
                 server.logger.debug("连接超时")
                 self.server_socket.close()
@@ -124,6 +129,9 @@ class FakeServerSocket:
         if result == "connection_request":
             server.start()
         server.logger.info("伪装服务器已退出")
+
+        if self.close_request:
+            self.close_request = False
 
 
     def handle_ping(self, client_socket, recv_data, i, server: PluginServerInterface):
@@ -164,7 +172,15 @@ class FakeServerSocket:
         client_socket.sendall(bytearray)
         server.logger.info("Responded with pong packet.")
 
+    @new_thread
     def stop(self, server: PluginServerInterface):
+        self.close_request = True
+        server.logger.info("正在关闭伪装服务器")
+        for i in range(5):
+            if not self.close_request:
+                break
+            time.sleep(1)
+
         if self.server_socket:
             try:
                 self.server_socket.close()
@@ -173,3 +189,6 @@ class FakeServerSocket:
                 return True
             except Exception as e:
                 server.logger.error(f"关闭伪装服务器失败: {e}")
+        else:
+            server.logger.info("伪装服务器已关闭")
+            return True
