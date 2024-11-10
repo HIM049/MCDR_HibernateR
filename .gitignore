@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 # MCDR Plugins
-.mcdr
-.pyz
+*.mcdr
+*.pyz
