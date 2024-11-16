@@ -39,15 +39,6 @@ class FakeServerSocket:
     @new_thread
     def start(self, server: PluginServerInterface):
 
-        '''
-        if self.server_socket is None:
-            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        if self.server_socket and self.server_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN):
-            server.logger.warning("伪装服务器正在运行")
-            return
-        '''
-
         #检查服务器是否在运行
         if server.is_server_running() or server.is_server_startup():
             server.logger.info("服务器正在运行,请勿启动伪装服务器!")
@@ -97,8 +88,6 @@ class FakeServerSocket:
                 self.server_socket.listen(5)
                 while result != "connection_request" and not self.close_request:
                     client_socket, client_address = self.server_socket.accept()
-                    #server.logger.info(f"设立res")
-                    #result=self.handle_client(client_socket, client_address, server)
                     try:
                         server.logger.info(f"收到来自{client_address[0]}:{client_address[1]}的连接")
                         recv_data = client_socket.recv(1024)
@@ -116,12 +105,7 @@ class FakeServerSocket:
                         server.logger.warning(f"[{client_ip}:{client_address[1]}]收到了无效数据({recv_data})")
                     except Exception as e:
                         server.logger.error(e)
-
-
-                    #self.server_socket.close()
-                    ###
-                    #I dont know why close here, and if I close here, accpet will raise an error
-                    ###
+                        
             except socket.timeout:
                 server.logger.debug("连接超时")
                 self.server_socket.close()

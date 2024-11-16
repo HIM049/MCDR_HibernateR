@@ -16,7 +16,6 @@ timer_manager = TimerManager()
 # 创建 fake_server_socket 实例
 fake_server_socket = None
 
-# Server = None
 
 # 初始化插件
 def on_load(server: PluginServerInterface, prev_module):
@@ -26,7 +25,7 @@ def on_load(server: PluginServerInterface, prev_module):
     builder = SimpleCommandBuilder()
     builder.command('!!hr sleep', lambda src: hr_sleep(src.get_server()))
     builder.command('!!hr wakeup', lambda src: hr_wakeup(src.get_server()))
-    builder.command('!!hr startFS', lambda src: fake_server_socket.start(src.get_server()))
+    builder.command('!!hr wakeup fs', lambda src: fake_server_socket.start(src.get_server()))
     builder.register(server)
 
     # 检查配置文件
@@ -44,7 +43,6 @@ def on_load(server: PluginServerInterface, prev_module):
     else:
 
         server.logger.warning("无法判断当前服务器状态，请使用!!hr startFS手动启动伪装服务器")
-        #fake_server_socket.start(server)
 
 
 def on_unload(server: PluginServerInterface):
