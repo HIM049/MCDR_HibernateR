@@ -6,7 +6,6 @@ import threading
 
 from mcdreforged.api.all import *
 from .byte_utils import *
-from .json import check_config_fire
 import online_player_api as lib_online_player
 
 class TimerManager:
@@ -15,8 +14,6 @@ class TimerManager:
 
     def start_timer(self, server: PluginServerInterface):
         self.cancel_timer(server)
-
-        check_config_fire(server)
 
         time.sleep(2)
         with open("config/HibernateR.json", "r") as file:

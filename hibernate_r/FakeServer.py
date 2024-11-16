@@ -8,13 +8,11 @@ import uuid
 from mcdreforged.api.all import *
 from .byte_utils import *
 import online_player_api as lib_online_player
-from .json import check_config_fire
 
 
 
 class FakeServerSocket:
     def __init__(self, server: PluginServerInterface):
-        check_config_fire(server)
         time.sleep(2)
         with open("config/HibernateR.json", "r") as file:
             config = json.load(file)
