@@ -42,7 +42,7 @@ def on_load(server: PluginServerInterface, prev_module):
         timer_manager.start_timer(server)
     else:
 
-        server.logger.warning("无法判断当前服务器状态，请使用!!hr startFS手动启动伪装服务器")
+        server.logger.warning("无法判断当前服务器状态，请使用 !!hr start fs 手动启动伪装服务器")
 
 
 def on_unload(server: PluginServerInterface):

@@ -54,7 +54,7 @@ class FakeServerSocket:
             pass
 
         result = None
-        server.logger.info("启动伪装服务端")
+        server.logger.info("伪装服务端已启动")
         while result != "connection_request" and not self.close_request:
             retry_count = 0
             max_retries = 5
@@ -105,7 +105,7 @@ class FakeServerSocket:
                         server.logger.warning(f"[{client_ip}:{client_address[1]}]收到了无效数据({recv_data})")
                     except Exception as e:
                         server.logger.error(e)
-                        
+
             except socket.timeout:
                 server.logger.debug("连接超时")
                 self.server_socket.close()
