@@ -37,7 +37,7 @@ class FakeServerSocket:
         server.logger.info("伪装服务器初始化完成")
 
     @new_thread
-    def start(self, server: PluginServerInterface):
+    def start(self, server: PluginServerInterface, start_server):
 
         #检查服务器是否在运行
         if server.is_server_running() or server.is_server_startup():
@@ -114,7 +114,7 @@ class FakeServerSocket:
                 self.server_socket.close()
 
         if result == "connection_request":
-            server.start()
+            start_server()
         server.logger.info("伪装服务器已退出")
 
         if self.close_request:
