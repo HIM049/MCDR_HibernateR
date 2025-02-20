@@ -114,7 +114,7 @@ class FakeServerSocket:
                 self.server_socket.close()
 
         if result == "connection_request":
-            start_server()
+            start_server(server)
         server.logger.info("伪装服务器已退出")
 
         if self.close_request:
