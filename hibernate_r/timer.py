@@ -32,7 +32,7 @@ class TimerManager:
         server.logger.info(f"当前在线玩家数量：{player_num}，黑名单玩家：{blacklist_player}")
 
         if player_num == 0:
-            self.current_timer = threading.Timer(wait_min * 60, stop_server)
+            self.current_timer = threading.Timer(wait_min * 60, stop_server, [server])
             self.current_timer.start()
             server.logger.info("休眠倒计时开始")
 
