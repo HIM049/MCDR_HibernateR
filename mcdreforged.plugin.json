@@ -1,6 +1,6 @@
 {
     "id": "hibernate_r",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "name": "HibernateR",
     "description": {
         "en_us": "A MCDReforged plugin. When there are no player in the server, the plugin can make it shutdown. And if someone want to visit the server, the plugin can make the server start again.",
